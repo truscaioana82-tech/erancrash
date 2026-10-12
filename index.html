@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eran Cash</title>
+  
+  <style>
+    body {
+      background-color: #f5f6fa;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 10px;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 340px;
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .card {
+      border-radius: 15px;
+      padding: 20px;
+      text-align: center;
+      color: white;
+    }
+    .balance-card {
+      background: linear-gradient(135deg, #3a7bd5, #3a6073);
+    }
+    .balance-card h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+    .points {
+      font-size: 36px;
+      font-weight: bold;
+    }
+    .conversion {
+      font-size: 18px;
+    }
+    .btn {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .video-btn {
+      background-color: #f39c12;
+      color: white;
+    }
+    .paypal-btn {
+      background-color: #bdc3c7;
+      color: #7f8c8d;
+    }
+    .paypal-btn.active {
+      background-color: #2980b9;
+      color: white;
+    }
+    #debug-panel {
+      width: 100%;
+      max-width: 340px;
+      background: #2c3e50;
+      color: #2ecc71;
+      font-family: monospace;
+      font-size: 11px;
+      padding: 10px;
+      margin-top: 15px;
+      border-radius: 10px;
+      box-sizing: border-box;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    #video-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000000;
+      z-index: 9999;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .video-mock-box {
+      width: 80%;
+      max-width: 300px;
+      background: #111;
+      border: 2px dashed #f39c12;
+      border-radius: 15px;
+      padding: 30px 20px;
+      text-align: center;
+      color: white;
+    }
+    .video-spinner {
+      font-size: 40px;
+      margin-bottom: 15px;
+      animation: spin 2s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    #video-timer {
+      font-size: 18px;
+      font-weight: bold;
+      margin-top: 10px;
+      color: #f39c12;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="card balance-card">
+      <h3>Saldo Punti</h3>
+      <div class="points" id="points-display">0 pt</div>
+      <div class="conversion" id="money-display">≈ € 0.00</div>
+    </div>
+    <button class="btn video-btn" id="watch-video-btn">
+      ▶ Guarda Video (+50 pt)
+    </button>
+    <button class="btn paypal-btn" id="redeem-btn" disabled>
+      💳 Riscatta su PayPal
+    </button>
+  </div>
+
+  <div id="debug-panel">Stato: Inizializzazione...</div>
+
+  <div id="video-overlay">
+    <div class="video-mock-box">
+      <div class="video-spinner">🎬</div>
+      <div style="font-weight: bold; font-size: 16px;">Riproduzione Video Sponsor</div>
+      <div style="font-size: 12px; color: #aaa; margin-top: 5px;">Attendi il termine dello spot</div>
+      <div id="video-timer">Caricamento...</div>
+    </div>
+  </div>
+
+  <script src="https://gstatic.com"></script>
+  <script src="https://gstatic.com"></script>
+
+  <script>
+    const debug = document.getElementById('debug-panel');
+    const pointsDisplay = document.getElementById('points-display');
+    const moneyDisplay = document.getElementById('money-display');
+    const watchVideoBtn = document.getElementById('watch-video-btn');
+    const redeemBtn = document.getElementById('redeem-btn');
+    const videoOverlay = document.getElementById('video-overlay');
+    const videoTimer = document.getElementById('video-timer');
+
+    let currentPoints = parseInt(localStorage.getItem('eran_cash_pts')) || 0;
+    let useLocalMode = false;
+
+    function log(message, isError = false) {
+      if (isError) {
+        debug.style.color = '#e74c3c';
+        debug.textContent = "ATTENZIONE: " + message;
+      } else {
+        debug.style.color = '#2ecc71';
+        debug.textContent = "STATO: " + message;
+      }
+    }
+
+    function updateUI(pts) {
+      pointsDisplay.textContent = pts + " pt";
+      moneyDisplay.textContent = "≈ € " + (pts / 1000).toFixed(2);
+      
+      if (pts >= 1000) {
+        redeemBtn.disabled = false;
+        redeemBtn.classList.add('active');
+      } else {
+        redeemBtn.disabled = true;
+        redeemBtn.classList.remove('active');
+      }
+    }
+
+    updateUI(currentPoints);
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCINhr_10mU5rD5K6HgcHhZF_6Ha0BbXwg",
+      authDomain: "://firebaseapp.com",
+      projectId: "eran-cash-55588",
+      storageBucket: "eran-cash-55588.firebasestorage.app",
+      messagingSenderId: "933185231218",
+      appId: "1:933185231218:web:10a4798655591ca968e5eb"
+    };
+
+    let db;
+    const utenteId = "12RU412HEg7OkuBVDxJH";
+
+    try {
+      if (typeof firebase !== 'undefined') {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        
+        db.collection("utenti").doc(utenteId).onSnapshot((docSnap) => {
+          if (docSnap.exists) {
+            currentPoints = docSnap.data().punti || 0;
+            localStorage.setItem('eran_cash_pts', currentPoints);
+            updateUI(currentPoints);
+            log("Database Cloud Firebase connesso e sincronizzato!");
+          } else {
+            activateLocalMode("Utente non configurato nel Cloud. Modalità locale attiva.");
+          }
+        }, (error) => {
+          activateLocalMode("Regole Cloud attive. Modalità locale sicura.");
+        });
+      } else {
+        activateLocalMode("Connessione assente. Modalità locale attiva.");
+      }
+    } catch (e) {
+      activateLocalMode("Errore configurazione. Modalità locale attiva.");
+    }
+
+    function activateLocalMode(reason) {
+      useLocalMode = true;
+      log(reason, true);
+      updateUI(currentPoints);
+    }
+
+    watchVideoBtn.addEventListener('click', () => {
+      watchVideoBtn.disabled = true;
+      videoOverlay.style.display = 'flex';
+      
+      let secondsLeft = 10;
+      videoTimer.textContent = "Tempo rimasto: " + secondsLeft + "s";
+      
+      const countdown = setInterval(() => {
+        secondsLeft--;
+        videoTimer.textContent = "Tempo rimasto: " + secondsLeft + "s";
+        
+        if (secondsLeft <= 0) {
+          clearInterval(countdown);
+          videoOverlay.style.display = 'none';
+          
+          currentPoints += 50;
+          localStorage.setItem('eran_cash_pts', currentPoints);
+          updateUI(currentPoints);
+          watchVideoBtn.disabled = false;
+          
+          if (useLocalMode || !db) {
+            log("Spot completato! +50 Punti (Salvati in locale).");
+          } else {
+            db.collection("utenti").doc(utenteId).update({
+              punti: firebase.firestore.FieldValue.increment(50)
+            }).then(() => {
+              log("Spot completato! +50 Punti inviati al Cloud.");
+            }).catch((err) => {
+              log("Punti salvati localmente per errore cloud.", true);
+            });
+          }
+        }
+      }, 1000);
+    });
+
+    // CONTROLLO BLOCCANTE INPUT EMAIL PAYPAL
+    redeemBtn.addEventListener('click', () => {
+      if (currentPoints < 1000) return;
+
+      // Questa finestra di testo comparirà SEMPRE, chiedendo l'email obbligatoriamente
+      const emailPayPal = prompt("Inserisci l'indirizzo email del tuo account PayPal per ricevere l'accredito:");
+      
+      // Se l'utente clicca Annulla o lascia lo spazio vuoto, blocca tutto e non scala i punti
+      if (emailPayPal === null || emailPayPal.trim() === "") {
+        alert("Operazione annullata. Devi inserire un indirizzo email valido per poter prelevare.");
+        log("Prelievo annullato: indirizzo email non inserito.", true);
+        return;
+      }
+
+      log("Elaborazione della richiesta...");
+
+      if (useLocalMode || !db) {
+        // Scaliamo i punti localmente solo se l'email è stata fornita
+        currentPoints -= 1000;
+        localStorage.setItem('eran_cash_pts', currentPoints);
+        updateUI(currentPoints);
+        alert("Richiesta simulata con successo! Inviati € 1.00 all'indirizzo: " + emailPayPal.trim());
+        log("Test riuscito! Richiesta inviata localmente a: " + emailPayPal.trim());
+      } else {
+        // Invio al database cloud reale
+        db.collection("prelievi").add({
+          utente: utenteId,
+          email_paypal: emailPayPal.trim(),
+          importo_euro: 1.00,
+          punti_scalati: 1000,
+          stato_pagamento: "In attesa di approvazione",
+          data_richiesta: new Date()
+        }).then(() => {
+          return db.collection("utenti").doc(utenteId).update({
+            punti: firebase.firestore.FieldValue.increment(-1000)
+          });
+        }).then(() => {
+          alert("Richiesta inviata al cloud! L'amministratore pagherà l'email: " + emailPayPal.trim());
+          log("Prelievo registrato online per: " + emailPayPal.trim());
+        }).catch((err) => {
+          alert("Errore tecnico cloud: " + err.message);
+        });
+      }
+    });
+  </script>
+</body>
+</html>
